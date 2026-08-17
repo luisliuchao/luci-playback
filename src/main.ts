@@ -3,11 +3,12 @@ import { alignClipToFrames, clampPlaybackRate, clipsCoveringTime, seekOffset } f
 import {
   JUMP_MS,
   SCRUB_STEPS,
+  clampTime,
   formatWallClock,
-  indexAfterJump,
-  indexForScrubValue,
-  scrubValueForIndex,
+  indexAtOrBefore,
+  progressForTime,
   timeAtProgress,
+  timeForScrubValue,
 } from "./timeline";
 import {
   canPickDirectory,
@@ -99,6 +100,7 @@ const state = {
   days: [] as string[],
   day: "",
   index: 0,
+  playheadMs: 0,
   playing: false,
   speed: 5,
   root: "",
@@ -153,12 +155,14 @@ app.innerHTML = `
     <div class="big-play" id="bigPlay">${PLAY}</div>
     <div class="shade"></div>
     <div class="controls" id="controls">
-      <input class="scrub" id="scrub" type="range" min="0" max="0" value="0" disabled data-tip="Seek" />
+      <div class="scrub-wrap" id="scrubWrap" data-tip="Seek">
+        <input class="scrub" id="scrub" type="range" min="0" max="0" value="0" disabled aria-label="Seek" />
+      </div>
       <div class="bar">
         <button class="icon" id="play" type="button" disabled aria-label="Play" data-tip="Play (k)">${PLAY}</button>
         <button class="icon" id="prev" type="button" disabled aria-label="Previous frame" data-tip="Previous frame (j)">${PREV}</button>
         <button class="icon" id="next" type="button" disabled aria-label="Next frame" data-tip="Next frame (l)">${NEXT}</button>
-        <div class="time" id="time" data-tip="Time of this frame / last frame">0:00:00 / 0:00:00</div>
+        <div class="time" id="time" data-tip="Current time / last frame">0:00:00 / 0:00:00</div>
         <div class="grow"></div>
         <button class="icon" id="mute" type="button" hidden aria-label="Mute" data-tip="Mute (m)">${SOUND}</button>
         <select id="speed" aria-label="Playback speed" data-tip="Playback speed">
@@ -199,7 +203,9 @@ const audioB = must<HTMLAudioElement>("#audioB");
 const audioPlayers = [audioA, audioB];
 let playbackContext: AudioContext | null = null;
 let syncGeneration = 0;
+let playGeneration = 0;
 const scrub = must<HTMLInputElement>("#scrub");
+const scrubWrap = must("#scrubWrap");
 const speedSelect = must<HTMLSelectElement>("#speed");
 const timeLabel = must("#time");
 const controls = must("#controls");
@@ -253,7 +259,9 @@ unlockForm.addEventListener("submit", (event) => {
 daySelect.addEventListener("change", () => {
   state.day = daySelect.value;
   state.index = 0;
+  state.playheadMs = 0;
   state.playing = false;
+  playGeneration += 1;
   void loadDay();
 });
 playButton.addEventListener("click", (event) => {
@@ -305,20 +313,33 @@ player.addEventListener("dblclick", (event) => {
 });
 player.addEventListener("mousemove", showControls);
 scrub.addEventListener("input", () => {
-  seekTo(indexForScrubValue(dayFrames(), Number(scrub.value)));
+  const timeMs = timeForScrubValue(dayFrames(), Number(scrub.value));
+  if (timeMs !== null) {
+    seekToTime(timeMs);
+  }
 });
-scrub.addEventListener("pointermove", (event) => {
+scrubWrap.addEventListener("pointerdown", (event) => {
+  if (event.button !== 0 || scrub.disabled) {
+    return;
+  }
+  event.preventDefault();
+  scrubWrap.setPointerCapture(event.pointerId);
+  seekFromClientX(event.clientX);
+});
+scrubWrap.addEventListener("pointermove", (event) => {
   const frames = dayFrames();
   if (frames.length === 0) {
     return;
   }
-  const rect = scrub.getBoundingClientRect();
-  const progress = rect.width === 0 ? 0 : Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+  const progress = progressFromClientX(event.clientX);
   const timeMs = timeAtProgress(frames, progress);
-  scrub.dataset.tip = timeMs === null ? "Seek" : formatWallClock(timeMs);
+  scrubWrap.dataset.tip = timeMs === null ? "Seek" : formatWallClock(timeMs);
+  if (scrubWrap.hasPointerCapture(event.pointerId)) {
+    seekFromClientX(event.clientX);
+  }
 });
-scrub.addEventListener("pointerleave", () => {
-  scrub.dataset.tip = "Seek";
+scrubWrap.addEventListener("pointerleave", () => {
+  scrubWrap.dataset.tip = "Seek";
 });
 speedSelect.addEventListener("change", () => {
   state.speed = Number(speedSelect.value);
@@ -395,7 +416,9 @@ async function resetSaved(): Promise<void> {
   state.day = "";
   state.frames = [];
   state.index = 0;
+  state.playheadMs = 0;
   state.playing = false;
+  playGeneration += 1;
   state.needPassword = false;
   state.error = "";
   rootLabel.textContent = "";
@@ -432,7 +455,9 @@ async function useFolder(picked: PickedFolder): Promise<void> {
   state.root = index.name;
   rootLabel.textContent = index.name;
   state.index = 0;
+  state.playheadMs = 0;
   state.playing = false;
+  playGeneration += 1;
   const sample = index.captures.filter((capture) => capture.day === (index.days[index.days.length - 1] ?? ""));
   const encrypted = await countEncrypted(sample);
   const invalid = luciFolderError(index, encrypted);
@@ -517,6 +542,8 @@ function loadFolderFrames(): void {
         local: capture,
       };
     });
+  state.index = 0;
+  state.playheadMs = state.frames[0]?.timeMs ?? 0;
   const firstFrameMs = state.frames[0]?.timeMs;
   const lastFrameMs = state.frames[state.frames.length - 1]?.timeMs;
   state.audios = state.folder.audios
@@ -584,6 +611,7 @@ function togglePlay(): void {
     void playLoop();
     scheduleHide();
   } else {
+    playGeneration += 1;
     showControls();
   }
   renderControls();
@@ -599,11 +627,30 @@ function step(delta: number): void {
 }
 
 function jumpBy(deltaMs: number): void {
-  seekTo(indexAfterJump(dayFrames(), state.index, deltaMs));
+  const frames = dayFrames();
+  if (frames.length === 0) {
+    return;
+  }
+  seekToTime(state.playheadMs + deltaMs);
 }
 
 function jumpTo(index: number): void {
   seekTo(index);
+}
+
+function progressFromClientX(clientX: number): number {
+  const rect = scrubWrap.getBoundingClientRect();
+  if (rect.width <= 0) {
+    return 0;
+  }
+  return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+}
+
+function seekFromClientX(clientX: number): void {
+  const timeMs = timeAtProgress(dayFrames(), progressFromClientX(clientX));
+  if (timeMs !== null) {
+    seekToTime(timeMs);
+  }
 }
 
 function seekTo(index: number): void {
@@ -611,7 +658,22 @@ function seekTo(index: number): void {
   if (frames.length === 0) {
     return;
   }
-  state.index = Math.min(frames.length - 1, Math.max(0, index));
+  const clamped = Math.min(frames.length - 1, Math.max(0, index));
+  const frame = frames[clamped];
+  if (!frame) {
+    return;
+  }
+  seekToTime(frame.timeMs);
+}
+
+function seekToTime(timeMs: number): void {
+  const frames = dayFrames();
+  if (frames.length === 0) {
+    return;
+  }
+  playGeneration += 1;
+  state.playheadMs = clampTime(frames, timeMs);
+  state.index = indexAtOrBefore(frames, state.playheadMs);
   state.playing = false;
   showControls();
   render();
@@ -619,23 +681,34 @@ function seekTo(index: number): void {
 }
 
 async function playLoop(): Promise<void> {
-  while (state.playing) {
+  const generation = (playGeneration += 1);
+  while (state.playing && generation === playGeneration) {
     const frames = dayFrames();
-    if (state.index >= frames.length - 1) {
+    const last = frames[frames.length - 1];
+    if (!last || state.playheadMs >= last.timeMs) {
+      state.playheadMs = last?.timeMs ?? state.playheadMs;
+      state.index = Math.max(0, frames.length - 1);
       state.playing = false;
       showControls();
       renderControls();
       return;
     }
-    const current = frames[state.index];
     const next = frames[state.index + 1];
-    const realGap = Math.max(1, next.timeMs - current.timeMs);
-    const wait = Math.max(40, realGap / state.speed);
+    if (!next) {
+      state.playheadMs = last.timeMs;
+      state.index = frames.length - 1;
+      state.playing = false;
+      showControls();
+      renderControls();
+      return;
+    }
+    const wait = Math.max(40, (next.timeMs - state.playheadMs) / state.speed);
     await sleep(wait);
-    if (!state.playing) {
+    if (!state.playing || generation !== playGeneration) {
       return;
     }
     state.index += 1;
+    state.playheadMs = frames[state.index]?.timeMs ?? next.timeMs;
     renderFrame();
     renderControls();
     void syncAudio();
@@ -676,16 +749,14 @@ function toggleFullscreen(): void {
 function renderControls(): void {
   const frames = dayFrames();
   const ready = frames.length > 0;
-  const first = frames[0];
   const last = frames[frames.length - 1];
-  const current = frames[state.index];
   playButton.disabled = !ready;
   prevButton.disabled = !ready || state.index === 0;
   nextButton.disabled = !ready || state.index >= frames.length - 1;
   scrub.disabled = !ready;
   scrub.max = String(SCRUB_STEPS);
-  scrub.value = String(scrubValueForIndex(frames, state.index));
-  const progress = ready ? Number(scrub.value) / SCRUB_STEPS : 0;
+  const progress = ready ? progressForTime(frames, state.playheadMs) : 0;
+  scrub.value = String(Math.round(progress * SCRUB_STEPS));
   scrub.style.setProperty("--progress", `${progress * 100}%`);
   playButton.innerHTML = state.playing ? PAUSE : PLAY;
   playButton.ariaLabel = state.playing ? "Pause" : "Play";
@@ -697,8 +768,8 @@ function renderControls(): void {
   bigPlay.innerHTML = state.playing ? PAUSE : PLAY;
   player.classList.toggle("is-paused", !state.playing);
   player.classList.toggle("is-playing", state.playing);
-  if (current && first && last) {
-    timeLabel.textContent = `${formatWallClock(current.timeMs)} / ${formatWallClock(last.timeMs)}`;
+  if (last) {
+    timeLabel.textContent = `${formatWallClock(state.playheadMs)} / ${formatWallClock(last.timeMs)}`;
   } else {
     timeLabel.textContent = "0:00:00 / 0:00:00";
   }
@@ -793,11 +864,11 @@ function unlockAudio(): void {
 }
 
 function kickAudio(): void {
-  const frame = dayFrames()[state.index];
-  if (!frame) {
+  const timeMs = playheadTime();
+  if (timeMs === null) {
     return;
   }
-  const clips = clipsForTime(frame.timeMs);
+  const clips = clipsForTime(timeMs);
   for (const [index, player] of audioPlayers.entries()) {
     const clip = clips[index];
     if (!clip?.src) {
@@ -827,6 +898,13 @@ function clipsForTime(timeMs: number): AudioClip[] {
   return clipsCoveringTime(state.audios, timeMs, audioPlayers.length);
 }
 
+function playheadTime(): number | null {
+  if (dayFrames().length === 0) {
+    return null;
+  }
+  return state.playheadMs;
+}
+
 async function ensureAudioSrc(clip: AudioClip): Promise<void> {
   if (clip.src) {
     return;
@@ -838,8 +916,8 @@ async function ensureAudioSrc(clip: AudioClip): Promise<void> {
 }
 
 async function prefetchAudio(): Promise<void> {
-  const frame = dayFrames()[state.index];
-  const clips = frame ? clipsForTime(frame.timeMs) : state.audios.slice(0, audioPlayers.length);
+  const timeMs = playheadTime();
+  const clips = timeMs === null ? state.audios.slice(0, audioPlayers.length) : clipsForTime(timeMs);
   await Promise.all(
     clips.map(async (clip) => {
       try {
@@ -919,13 +997,13 @@ async function playClip(player: HTMLAudioElement, clip: AudioClip, frameMs: numb
 
 async function syncAudio(): Promise<void> {
   const generation = (syncGeneration += 1);
-  const frame = dayFrames()[state.index];
+  const timeMs = playheadTime();
   muteButton.hidden = state.audios.length === 0;
-  if (!frame || state.audios.length === 0) {
+  if (timeMs === null || state.audios.length === 0) {
     stopAudio();
     return;
   }
-  const clips = clipsForTime(frame.timeMs);
+  const clips = clipsForTime(timeMs);
   if (clips.length === 0) {
     for (const player of audioPlayers) {
       player.pause();
@@ -952,7 +1030,7 @@ async function syncAudio(): Promise<void> {
         return;
       }
       try {
-        await playClip(player, clip, frame.timeMs);
+        await playClip(player, clip, timeMs);
       } catch {
         player.pause();
       }

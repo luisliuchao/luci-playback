@@ -401,6 +401,12 @@ button {
   pointer-events: auto;
 }
 
+.scrub-wrap {
+  position: relative;
+  padding: 6px 0 8px;
+  cursor: pointer;
+}
+
 .scrub {
   --progress: 0%;
   width: 100%;
@@ -408,7 +414,7 @@ button {
   margin: 0;
   appearance: none;
   background: transparent;
-  cursor: pointer;
+  pointer-events: none;
 }
 
 .scrub::-webkit-slider-runnable-track {
@@ -553,6 +559,6 @@ button {
   transform: none;
 }
 
-.scrub[data-tip]::after {
+.scrub-wrap[data-tip]::after {
   bottom: 18px;
 }

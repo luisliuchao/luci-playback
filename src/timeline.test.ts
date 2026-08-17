@@ -3,14 +3,18 @@ import { test } from "node:test";
 import {
   JUMP_MS,
   SCRUB_STEPS,
+  clampTime,
   formatWallClock,
   indexAfterJump,
   indexAtOrBefore,
   indexForProgress,
   indexForScrubValue,
   progressForIndex,
+  progressForTime,
   scrubValueForIndex,
+  scrubValueForTime,
   timeAtProgress,
+  timeForScrubValue,
 } from "./timeline.ts";
 
 const frames = [{ timeMs: 1_000 }, { timeMs: 3_000 }, { timeMs: 11_000 }];
@@ -52,4 +56,14 @@ test("formats the capture clock in local time", () => {
   assert.equal(timeAtProgress(frames, 0), 1_000);
   assert.equal(timeAtProgress(frames, 1), 11_000);
   assert.equal(timeAtProgress([], 0.5), null);
+});
+
+test("scrub position in a gap stays at the clicked time", () => {
+  assert.equal(progressForTime(frames, 5_000), 0.4);
+  assert.equal(scrubValueForTime(frames, 5_000), 4_000);
+  assert.equal(indexAtOrBefore(frames, 5_000), 1);
+  assert.notEqual(scrubValueForTime(frames, 5_000), scrubValueForIndex(frames, 1));
+  assert.equal(timeForScrubValue(frames, 4_000), 5_000);
+  assert.equal(clampTime(frames, 0), 1_000);
+  assert.equal(clampTime(frames, 20_000), 11_000);
 });
