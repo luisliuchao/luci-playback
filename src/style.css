@@ -560,5 +560,12 @@ button {
 }
 
 .scrub-wrap[data-tip]::after {
+  left: var(--tip-x, 50%);
   bottom: 18px;
+  transition: opacity 80ms ease;
+}
+
+.scrub-wrap.is-seeking[data-tip]::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
