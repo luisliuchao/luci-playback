@@ -155,7 +155,7 @@ app.innerHTML = `
     <div class="big-play" id="bigPlay">${PLAY}</div>
     <div class="shade"></div>
     <div class="controls" id="controls">
-      <div class="scrub-wrap" id="scrubWrap" data-tip="Seek">
+      <div class="scrub-wrap" id="scrubWrap">
         <input class="scrub" id="scrub" type="range" min="0" max="0" value="0" disabled aria-label="Seek" />
       </div>
       <div class="bar">
@@ -318,28 +318,35 @@ scrub.addEventListener("input", () => {
     seekToTime(timeMs);
   }
 });
+scrubWrap.addEventListener("pointerenter", (event) => {
+  updateScrubTip(event.clientX);
+});
 scrubWrap.addEventListener("pointerdown", (event) => {
   if (event.button !== 0 || scrub.disabled) {
     return;
   }
   event.preventDefault();
+  scrubWrap.classList.add("is-seeking");
   scrubWrap.setPointerCapture(event.pointerId);
+  updateScrubTip(event.clientX);
   seekFromClientX(event.clientX);
 });
 scrubWrap.addEventListener("pointermove", (event) => {
-  const frames = dayFrames();
-  if (frames.length === 0) {
-    return;
-  }
-  const progress = progressFromClientX(event.clientX);
-  const timeMs = timeAtProgress(frames, progress);
-  scrubWrap.dataset.tip = timeMs === null ? "Seek" : formatWallClock(timeMs);
+  updateScrubTip(event.clientX);
   if (scrubWrap.hasPointerCapture(event.pointerId)) {
     seekFromClientX(event.clientX);
   }
 });
 scrubWrap.addEventListener("pointerleave", () => {
-  scrubWrap.dataset.tip = "Seek";
+  if (!scrubWrap.classList.contains("is-seeking")) {
+    hideScrubTip();
+  }
+});
+scrubWrap.addEventListener("lostpointercapture", () => {
+  scrubWrap.classList.remove("is-seeking");
+  if (!scrubWrap.matches(":hover")) {
+    hideScrubTip();
+  }
 });
 speedSelect.addEventListener("change", () => {
   state.speed = Number(speedSelect.value);
@@ -644,6 +651,22 @@ function progressFromClientX(clientX: number): number {
     return 0;
   }
   return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+}
+
+function updateScrubTip(clientX: number): void {
+  const rect = scrubWrap.getBoundingClientRect();
+  const x = rect.width <= 0 ? 0 : Math.min(rect.width, Math.max(0, clientX - rect.left));
+  scrubWrap.style.setProperty("--tip-x", `${x}px`);
+  const timeMs = timeAtProgress(dayFrames(), progressFromClientX(clientX));
+  if (timeMs === null) {
+    hideScrubTip();
+    return;
+  }
+  scrubWrap.dataset.tip = formatWallClock(timeMs);
+}
+
+function hideScrubTip(): void {
+  delete scrubWrap.dataset.tip;
 }
 
 function seekFromClientX(clientX: number): void {
