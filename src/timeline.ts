@@ -25,6 +25,27 @@ export function scrubValueForIndex(frames: TimedFrame[], index: number): number 
   return Math.round(progressForIndex(frames, index) * SCRUB_STEPS);
 }
 
+export function progressForTime(frames: TimedFrame[], timeMs: number): number {
+  if (frames.length === 0) {
+    return 0;
+  }
+  const { start, duration } = daySpan(frames);
+  return Math.min(1, Math.max(0, (timeMs - start) / duration));
+}
+
+export function scrubValueForTime(frames: TimedFrame[], timeMs: number): number {
+  return Math.round(progressForTime(frames, timeMs) * SCRUB_STEPS);
+}
+
+export function timeForScrubValue(frames: TimedFrame[], value: number): number | null {
+  return timeAtProgress(frames, value / SCRUB_STEPS);
+}
+
+export function clampTime(frames: TimedFrame[], timeMs: number): number {
+  const { start, end } = daySpan(frames);
+  return Math.min(end, Math.max(start, timeMs));
+}
+
 export function indexForProgress(frames: TimedFrame[], progress: number): number {
   if (frames.length === 0) {
     return 0;
