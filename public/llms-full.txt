@@ -1,0 +1,50 @@
+# Luci Playback
+
+A free local-in-browser player for Luci screen-memory frames and audio.
+
+- Site: https://luci.luisliuchao.com/
+- About: https://luci.luisliuchao.com/about.html
+- Luci (Memories.ai): https://luci.memories.ai
+- Source: https://github.com/luisliuchao/luci-playback
+- Contact: mailto:luisliuchao@gmail.com
+- Author: Liu Chao
+
+## What it is
+
+Luci Playback plays the frames and audio that Luci saved on the visitor's computer. Luci is the original local screen-memory app from Memories.ai. Luci Playback is an independent player for those local files. It is not the Luci app itself.
+
+There is no login. Nothing is uploaded. The browser reads a folder the visitor picks. Encrypted `LUCISS01` frames are decrypted on the device with WebCrypto. The Luci Safe Storage password never leaves the computer. The browser keeps the unlock so a refresh does not ask again.
+
+## How to use it
+
+1. Open https://luci.luisliuchao.com
+2. Click Choose folder.
+3. Pick the Luci home folder, not the user folder:
+   - macOS: `~/.luciMicrosoft` (Cmd+Shift+G in the picker, then paste that path)
+   - Linux / Windows: `~/.luci`
+4. If frames are encrypted, enter the Luci Safe Storage password. On a Mac, the unlock screen shows this command, which copies the password to the clipboard:
+
+```
+security find-generic-password -s "luci-electron Safe Storage" -w | pbcopy
+```
+
+Chrome refuses folders that contain system files. If the picker errors with a SecurityError about system files, the visitor picked too high (often the home folder). They should pick Luci home instead.
+
+## Playback
+
+Playback follows real capture time, not frame index. Frames are usually about five seconds apart. The scrub bar is the captured day. The clock shows `HH:MM:SS / HH:MM:SS`. Hover on the bar shows the time under the pointer.
+
+If the Luci folder has microphone or system recordings, audio plays in sync with the current frame.
+
+Keyboard: Space plays or pauses; arrows or `j`/`l` step one frame; `,`/`.` jump 10 seconds; Shift+arrows jump one minute; Home/End jump to the start or end of the day; `m` mutes. Speed is 1x–30x.
+
+## Privacy
+
+- Frames, audio, `.dbkey`, and the Safe Storage password stay on the visitor's computer.
+- The site does not upload files.
+- The browser may remember the folder handle and unlock in IndexedDB on that device.
+- Reset saved path and password from the More menu.
+
+## Related names
+
+Luci, Luci Playback, Memories.ai, screen memory, local player, Rewind alternative, Safe Storage, LUCISS01, ~/.luciMicrosoft, ~/.luci.

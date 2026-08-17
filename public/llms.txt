@@ -1,0 +1,23 @@
+# Luci Playback
+
+> A free local browser player for Luci screen-memory frames and audio.
+
+Luci Playback plays the frames and audio that Luci saved on your computer. Open https://luci.luisliuchao.com, choose your Luci folder, and play in the browser. Files stay on this computer and are never uploaded.
+
+Luci is the original local screen-memory app from Memories.ai. Luci Playback is an independent player for those local files.
+
+## Links
+
+- Site: https://luci.luisliuchao.com/
+- About: https://luci.luisliuchao.com/about.html
+- Full description: https://luci.luisliuchao.com/llms-full.txt
+- Luci: https://luci.memories.ai
+- Source: https://github.com/luisliuchao/luci-playback
+- Contact: mailto:luisliuchao@gmail.com
+
+## How it works
+
+- Choose `~/.luciMicrosoft` on a Mac, or `~/.luci` on Linux or Windows. Do not pick the user folder.
+- Encrypted `LUCISS01` frames are decrypted in the browser with the Luci Safe Storage password.
+- The password never leaves this computer. This browser keeps the unlock so you can refresh.
+- Playback follows real capture time. Audio plays in sync when the Luci folder has recordings.

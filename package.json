@@ -1,0 +1,22 @@
+{
+  "name": "luci-playback",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Play Luci screen-memory frames in your browser. Choose your Luci folder on this computer. Files stay local and are never uploaded.",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:luisliuchao/luci-playback.git"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "start": "vite preview --port 5175 --strictPort",
+    "test": "node --experimental-strip-types --test src/audio.test.ts src/timeline.test.ts src/pickError.test.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  }
+}

@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>About Luci Playback — local player for Luci screen memory</title>
+    <meta
+      name="description"
+      content="Luci Playback is a free local browser player for Luci screen-memory frames and audio from Memories.ai. Pick ~/.luciMicrosoft or ~/.luci. Files stay on this computer and are never uploaded."
+    />
+    <meta
+      name="keywords"
+      content="Luci, Luci Playback, screen memory, Memories.ai, local player, Rewind alternative, ~/.luciMicrosoft, Safe Storage"
+    />
+    <meta name="author" content="Liu Chao" />
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#0f0f0f" />
+    <link rel="canonical" href="https://luci.luisliuchao.com/about.html" />
+    <link rel="author" href="mailto:luisliuchao@gmail.com" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <link rel="describedby" href="https://luci.luisliuchao.com/llms.txt" />
+    <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM summary" />
+    <link rel="alternate" type="text/plain" href="/llms-full.txt" title="LLM full description" />
+    <meta property="og:type" content="article" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:site_name" content="Luci Playback" />
+    <meta property="og:url" content="https://luci.luisliuchao.com/about.html" />
+    <meta property="og:title" content="About Luci Playback — local player for Luci screen memory" />
+    <meta
+      property="og:description"
+      content="Play Luci screen-memory frames and audio in your browser. Files stay on this computer and are never uploaded. Luci is from Memories.ai."
+    />
+    <meta property="og:image" content="https://luci.luisliuchao.com/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Luci Playback player showing a local screen-memory frame" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="About Luci Playback — local player for Luci screen memory" />
+    <meta
+      name="twitter:description"
+      content="Play Luci screen-memory frames and audio in your browser. Files stay on this computer and are never uploaded."
+    />
+    <meta name="twitter:image" content="https://luci.luisliuchao.com/og.png" />
+    <meta name="twitter:image:alt" content="Luci Playback player showing a local screen-memory frame" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0f0f0f;
+        --panel: #212121;
+        --text: #f1f1f1;
+        --muted: #aaaaaa;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+      }
+      body {
+        font-family: "Roboto", "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.55;
+      }
+      .topbar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 16px;
+        background: var(--panel);
+      }
+      .brand {
+        font-weight: 650;
+        letter-spacing: 0.02em;
+        color: inherit;
+        text-decoration: none;
+      }
+      .play {
+        margin-left: auto;
+        background: #0f0f0f;
+        color: var(--text);
+        border-radius: 18px;
+        padding: 7px 12px;
+        text-decoration: none;
+      }
+      .play:hover {
+        background: #2a2a2a;
+      }
+      main {
+        max-width: 40rem;
+        margin: 0 auto;
+        padding: 32px 20px 64px;
+      }
+      h1 {
+        margin: 0 0 16px;
+        font-size: 1.75rem;
+        font-weight: 650;
+      }
+      h2 {
+        margin: 28px 0 12px;
+        font-size: 1.15rem;
+        font-weight: 650;
+      }
+      p,
+      li {
+        color: var(--muted);
+      }
+      a {
+        color: #fff;
+        text-underline-offset: 3px;
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.92em;
+        color: var(--text);
+      }
+      dt {
+        margin-top: 16px;
+        font-weight: 650;
+        color: var(--text);
+      }
+      dd {
+        margin: 6px 0 0;
+        color: var(--muted);
+      }
+    </style>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "AboutPage",
+        "name": "About Luci Playback",
+        "url": "https://luci.luisliuchao.com/about.html",
+        "description": "Luci Playback is a free local browser player for Luci screen-memory frames and audio. Files stay on this computer and are never uploaded.",
+        "isPartOf": {
+          "@type": "WebSite",
+          "name": "Luci Playback",
+          "url": "https://luci.luisliuchao.com/"
+        },
+        "about": {
+          "@type": "WebApplication",
+          "name": "Luci Playback",
+          "url": "https://luci.luisliuchao.com/"
+        },
+        "author": {
+          "@type": "Person",
+          "name": "Liu Chao",
+          "email": "mailto:luisliuchao@gmail.com"
+        }
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Luci Playback",
+            "item": "https://luci.luisliuchao.com/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "About",
+            "item": "https://luci.luisliuchao.com/about.html"
+          }
+        ]
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What is Luci Playback?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Luci Playback is a free local browser player for Luci screen-memory frames and audio. Open the site, choose your Luci folder, and play. Files stay on this computer and are never uploaded."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What is Luci?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Luci is the original local screen-memory app from Memories.ai. It saves frames and audio on your computer. Luci Playback only plays those files."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does Luci Playback upload my files?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. Frames, audio, and the Safe Storage password stay on this computer. The browser decrypts files locally."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Which folder should I pick?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Pick the Luci home folder, not your user folder. On a Mac that is ~/.luciMicrosoft. On Linux or Windows that is ~/.luci."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "How do I unlock encrypted frames?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Enter the Luci Safe Storage password. On a Mac, copy the command from the unlock screen and run it in Terminal to put the password on your clipboard. The password never leaves this computer. This browser keeps the unlock so you can refresh."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does audio play?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. If the Luci folder has microphone or system recordings, Luci Playback plays them in sync with the frames. Playback follows real capture time."
+            }
+          }
+        ]
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "HowTo",
+        "name": "Play Luci screen memory in the browser",
+        "description": "Open Luci Playback, choose your Luci home folder, unlock if needed, and play frames and audio locally.",
+        "step": [
+          {
+            "@type": "HowToStep",
+            "position": 1,
+            "name": "Open Luci Playback",
+            "text": "Go to https://luci.luisliuchao.com. There is no login."
+          },
+          {
+            "@type": "HowToStep",
+            "position": 2,
+            "name": "Choose your Luci folder",
+            "text": "Click Choose folder. On a Mac, press Cmd+Shift+G and paste ~/.luciMicrosoft. On Linux or Windows, pick ~/.luci."
+          },
+          {
+            "@type": "HowToStep",
+            "position": 3,
+            "name": "Unlock encrypted frames",
+            "text": "If frames are encrypted, enter the Luci Safe Storage password. The password never leaves this computer."
+          },
+          {
+            "@type": "HowToStep",
+            "position": 4,
+            "name": "Play",
+            "text": "Use the scrub bar and clock to move through the captured day. Audio plays in sync when recordings are present."
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/">Luci Playback</a>
+      <a class="play" href="/">Open player</a>
+    </header>
+    <main>
+      <h1>About Luci Playback</h1>
+      <p>
+        Luci Playback is a free local player for
+        <a href="https://luci.memories.ai">Luci</a>
+        screen memory. It plays the frames and audio Luci saved on your computer. Choose your Luci
+        folder in this browser. Files stay on this computer and are never uploaded.
+      </p>
+      <p>
+        Luci is the original screen-memory app from Memories.ai at
+        <a href="https://luci.memories.ai">luci.memories.ai</a>. Luci Playback is an independent
+        player for those local files. It is not the Luci app itself.
+      </p>
+
+      <h2>Which folder to pick</h2>
+      <p>Pick the Luci home folder, not your user folder. Chrome will refuse a folder that contains system files.</p>
+      <ul>
+        <li>macOS: <code>~/.luciMicrosoft</code></li>
+        <li>Linux or Windows: <code>~/.luci</code></li>
+      </ul>
+      <p>
+        On a Mac, click Choose folder, press Cmd+Shift+G, paste <code>~/.luciMicrosoft</code>, and
+        open it.
+      </p>
+
+      <h2>Privacy</h2>
+      <p>
+        Frames, audio, and the Safe Storage password stay on this computer. The browser decrypts
+        <code>LUCISS01</code> frames locally with WebCrypto. The password never leaves this computer.
+        This browser keeps the unlock so you can refresh.
+      </p>
+
+      <h2>Playback</h2>
+      <p>
+        Playback follows real capture time. The scrub bar is the captured day, not frame count. The
+        clock shows the time of the current frame. If the Luci folder has microphone or system
+        audio, it plays in sync.
+      </p>
+
+      <h2>Questions</h2>
+      <dl>
+        <dt>Does this upload my screen memory?</dt>
+        <dd>No. Nothing is uploaded. The site only asks the browser to read a folder you pick.</dd>
+        <dt>Do I need an account?</dt>
+        <dd>No. Open the player and choose a folder.</dd>
+        <dt>How do I unlock encrypted frames on a Mac?</dt>
+        <dd>
+          Copy the command from the unlock screen and run it in Terminal. That puts the Luci Safe
+          Storage password on your clipboard. Paste it into the field.
+        </dd>
+        <dt>Who made this?</dt>
+        <dd>
+          Liu Chao. Source is on
+          <a href="https://github.com/luisliuchao/luci-playback">GitHub</a>. Support or feedback:
+          <a href="mailto:luisliuchao@gmail.com?subject=Luci%20Playback">luisliuchao@gmail.com</a>.
+        </dd>
+      </dl>
+    </main>
+    <script
+      type="module"
+      src="https://static.cloudflareinsights.com/beacon.min.js"
+      data-cf-beacon='{"token": "e5c2d0a45652462db480978d7220c87a"}'
+    ></script>
+  </body>
+</html>
