@@ -18,11 +18,14 @@ import {
   forgetSavedDirectory,
   forgetScreenshotKey,
   keyUnlocksCaptures,
+  loadDbSecret,
   loadScreenshotKey,
   luciFolderError,
   pickDirectory,
+  rememberDbSecret,
   rememberDirectory,
   rememberScreenshotKey,
+  resolveDbSecret,
   restoreDirectory,
   unlockScreenshotKey,
   type FolderIndex,
@@ -31,6 +34,7 @@ import {
   type PickedFolder,
 } from "./browserFolder";
 import { explainPickError } from "./pickError";
+import type { TranscriptSegment } from "./transcript";
 
 type Frame = {
   day: string;
@@ -49,6 +53,7 @@ const FULL = `<svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm12 0h-2v3h-
 const SOUND = `<svg viewBox="0 0 24 24"><path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2c0-1.77-1-3.29-2.5-4.03v8.05c1.5-.74 2.5-2.26 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>`;
 const MUTE = `<svg viewBox="0 0 24 24"><path d="M16.5 12c0-1.77-1-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v4h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4 9.91 6.09 12 8.18V4z"/></svg>`;
 const MORE = `<svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>`;
+const CC = `<svg viewBox="0 0 24 24"><path d="M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM11 11H9.5v-.5h-2v3h2V13H11v1a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1zm7 0h-1.5v-.5h-2v3h2V13H18v1a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1z"/></svg>`;
 const RESET = `<svg viewBox="0 0 24 24"><path d="M12 6V3L8 7l4 4V8c2.76 0 5 2.24 5 5a5 5 0 0 1-8.9 3.1L6.64 17.6A7 7 0 0 0 19 13c0-3.87-3.13-7-7-7z"/></svg>`;
 const MAIL = `<svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4-8 5L4 8V6l8 5 8-5v2z"/></svg>`;
 const INFO = `<svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>`;
@@ -114,6 +119,11 @@ const state = {
   objectUrls: [] as string[],
   audios: [] as AudioClip[],
   muted: false,
+  transcript: [] as TranscriptSegment[],
+  transcriptOpen: false,
+  transcriptFilter: "all" as "all" | string,
+  transcriptQuery: "",
+  transcriptLoading: false,
 };
 
 type AudioClip = LocalAudio & {
@@ -165,6 +175,7 @@ app.innerHTML = `
         <button class="icon" id="next" type="button" disabled aria-label="Next frame" data-tip="Next frame (l)">${NEXT}</button>
         <div class="time" id="time" data-tip="Current time / last frame">0:00:00 / 0:00:00</div>
         <div class="grow"></div>
+        <button class="icon" id="transcript" type="button" hidden aria-label="Transcript" aria-pressed="false" data-tip="Transcript (c)">${CC}</button>
         <button class="icon" id="mute" type="button" hidden aria-label="Mute" data-tip="Mute (m)">${SOUND}</button>
         <select id="speed" aria-label="Playback speed" data-tip="Playback speed">
           <option value="1">1x</option>
@@ -178,6 +189,17 @@ app.innerHTML = `
     </div>
     <audio id="audioA" preload="auto"></audio>
     <audio id="audioB" preload="auto"></audio>
+    <aside class="transcript" id="transcriptPanel" hidden aria-label="Transcript">
+      <div class="transcript-head">
+        <div class="transcript-title">Transcript</div>
+        <button class="icon transcript-close" id="transcriptClose" type="button" aria-label="Close transcript"><svg viewBox="0 0 24 24"><path d="M18.3 5.7 12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7 2.9 18.3 9.2 12 2.9 5.7 4.3 4.3l6.3 6.3 6.3-6.3z"/></svg></button>
+      </div>
+      <div class="transcript-tools">
+        <input id="transcriptSearch" type="search" placeholder="Search this day" autocomplete="off" />
+        <div class="transcript-filters" id="transcriptFilters"></div>
+      </div>
+      <div class="transcript-list" id="transcriptList"></div>
+    </aside>
   </div>
 `;
 
@@ -199,6 +221,12 @@ const prevButton = must<HTMLButtonElement>("#prev");
 const nextButton = must<HTMLButtonElement>("#next");
 const fullButton = must("#full");
 const muteButton = must<HTMLButtonElement>("#mute");
+const transcriptButton = must<HTMLButtonElement>("#transcript");
+const transcriptPanel = must("#transcriptPanel");
+const transcriptClose = must<HTMLButtonElement>("#transcriptClose");
+const transcriptSearch = must<HTMLInputElement>("#transcriptSearch");
+const transcriptFilters = must("#transcriptFilters");
+const transcriptList = must("#transcriptList");
 const audioA = must<HTMLAudioElement>("#audioA");
 const audioB = must<HTMLAudioElement>("#audioB");
 const audioPlayers = [audioA, audioB];
@@ -284,6 +312,38 @@ fullButton.addEventListener("click", (event) => {
 muteButton.addEventListener("click", (event) => {
   event.stopPropagation();
   toggleMute();
+});
+transcriptButton.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleTranscript();
+});
+transcriptClose.addEventListener("click", (event) => {
+  event.stopPropagation();
+  state.transcriptOpen = false;
+  renderTranscriptPanel();
+});
+transcriptSearch.addEventListener("input", () => {
+  state.transcriptQuery = transcriptSearch.value;
+  renderTranscriptList();
+});
+transcriptFilters.addEventListener("click", (event) => {
+  const button = event.target instanceof Element ? event.target.closest<HTMLButtonElement>("button[data-source]") : null;
+  if (!button) {
+    return;
+  }
+  state.transcriptFilter = button.dataset.source ?? "all";
+  renderTranscriptFilters();
+  renderTranscriptList();
+});
+transcriptList.addEventListener("click", (event) => {
+  const row = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-abs]") : null;
+  if (!row) {
+    return;
+  }
+  const absMs = Number(row.dataset.abs);
+  if (Number.isFinite(absMs)) {
+    seekToTime(absMs);
+  }
 });
 controls.addEventListener("click", (event) => {
   event.stopPropagation();
@@ -389,6 +449,8 @@ window.addEventListener("keydown", (event) => {
     toggleFullscreen();
   } else if (event.key === "m") {
     toggleMute();
+  } else if (event.key === "c") {
+    toggleTranscript();
   }
 });
 
@@ -426,6 +488,9 @@ async function resetSaved(): Promise<void> {
   state.index = 0;
   state.playheadMs = 0;
   state.playing = false;
+  state.transcript = [];
+  state.transcriptOpen = false;
+  renderTranscriptPanel();
   playGeneration += 1;
   state.needPassword = false;
   state.error = "";
@@ -460,6 +525,10 @@ async function useFolder(picked: PickedFolder): Promise<void> {
   const { index, handle } = picked;
   clearObjectUrls();
   state.key = null;
+  state.transcript = [];
+  state.transcriptOpen = false;
+  state.transcriptQuery = "";
+  state.transcriptFilter = "all";
   state.root = index.name;
   rootLabel.textContent = index.name;
   state.index = 0;
@@ -485,6 +554,12 @@ async function useFolder(picked: PickedFolder): Promise<void> {
     await rememberDirectory(handle);
   }
   state.folder = index;
+  if (index.audios.length > 0) {
+    console.info(
+      "[luci-playback] files matched as audio:",
+      index.audios.map((clip) => clip.relativePath),
+    );
+  }
   state.source = "folder";
   state.days = index.days;
   state.day = index.days[index.days.length - 1] ?? "";
@@ -521,12 +596,19 @@ async function unlockFolder(): Promise<void> {
   if (!state.folder?.dbkey) {
     return;
   }
+  const password = safePass.value;
   try {
-    state.key = await unlockScreenshotKey(state.folder.dbkey, safePass.value);
+    state.key = await unlockScreenshotKey(state.folder.dbkey, password);
     await rememberScreenshotKey(state.folder.dbkey, state.key);
     safePass.value = "";
     state.needPassword = false;
     state.error = "";
+    try {
+      const secret = await resolveDbSecret(state.folder.dbkey, password);
+      await rememberDbSecret(state.folder.dbkey, secret);
+    } catch {
+      // Transcript is optional; frames still work without it.
+    }
     loadFolderFrames();
   } catch {
     state.error = "That password did not unlock the Luci key.";
@@ -568,8 +650,10 @@ function loadFolderFrames(): void {
   }
   stopAudio();
   render();
+  renderTranscriptPanel();
   void prefetchAudio();
   void syncAudio();
+  void loadTranscriptForFolder();
 }
 
 function loadDay(): void {
@@ -790,6 +874,8 @@ function renderControls(): void {
   muteButton.innerHTML = state.muted ? MUTE : SOUND;
   muteButton.ariaLabel = state.muted ? "Unmute" : "Mute";
   muteButton.dataset.tip = state.muted ? "Unmute (m)" : "Mute (m)";
+  transcriptButton.hidden = daySegments().length === 0;
+  syncTranscriptHighlight();
   bigPlay.innerHTML = state.playing ? PAUSE : PLAY;
   player.classList.toggle("is-paused", !state.playing);
   player.classList.toggle("is-playing", state.playing);
@@ -877,6 +963,177 @@ function toggleMute(): void {
     player.muted = state.muted;
   }
   renderControls();
+}
+
+function toggleTranscript(): void {
+  if (daySegments().length === 0) {
+    return;
+  }
+  state.transcriptOpen = !state.transcriptOpen;
+  renderTranscriptPanel();
+}
+
+function daySegments(): TranscriptSegment[] {
+  return state.transcript.filter((segment) => segment.day === state.day);
+}
+
+async function loadTranscriptForFolder(): Promise<void> {
+  const folder = state.folder;
+  if (!folder?.indexDb || !folder.dbkey) {
+    return;
+  }
+  if (state.transcript.length > 0 || state.transcriptLoading) {
+    return;
+  }
+  state.transcriptLoading = true;
+  try {
+    let secret = await loadDbSecret(folder.dbkey);
+    if (!secret) {
+      // Only derivable when we have the password (sealed key) — otherwise the
+      // frame path is using a cached key and the transcript waits for unlock.
+      if (state.folder?.needPassword) {
+        return;
+      }
+      secret = await resolveDbSecret(folder.dbkey);
+      await rememberDbSecret(folder.dbkey, secret);
+    }
+    const bytes = new Uint8Array(await folder.indexDb());
+    const { loadTranscript } = await import("./transcript");
+    state.transcript = await loadTranscript(bytes, secret);
+    renderControls();
+    renderTranscriptPanel();
+  } catch (error) {
+    console.warn("[luci-playback] transcript unavailable:", error);
+  } finally {
+    state.transcriptLoading = false;
+  }
+}
+
+function renderTranscriptPanel(): void {
+  const has = daySegments().length > 0;
+  transcriptButton.hidden = !has;
+  transcriptButton.setAttribute("aria-pressed", String(state.transcriptOpen && has));
+  player.classList.toggle("transcript-open", state.transcriptOpen && has);
+  transcriptPanel.hidden = !(state.transcriptOpen && has);
+  if (state.transcriptOpen && has) {
+    renderTranscriptFilters();
+    renderTranscriptList();
+  }
+}
+
+function transcriptSources(): string[] {
+  const set = new Set<string>();
+  for (const segment of daySegments()) {
+    if (segment.source) {
+      set.add(segment.source);
+    }
+  }
+  return [...set].sort();
+}
+
+function sourceLabel(source: string): string {
+  if (source === "all") {
+    return "All";
+  }
+  return source.charAt(0).toUpperCase() + source.slice(1);
+}
+
+function renderTranscriptFilters(): void {
+  const sources = transcriptSources();
+  if (sources.length < 2) {
+    transcriptFilters.innerHTML = "";
+    return;
+  }
+  const options = ["all", ...sources];
+  transcriptFilters.innerHTML = options
+    .map((source) => {
+      const active = state.transcriptFilter === source ? " is-active" : "";
+      return `<button type="button" class="chip${active}" data-source="${source}">${sourceLabel(source)}</button>`;
+    })
+    .join("");
+}
+
+function visibleSegments(): TranscriptSegment[] {
+  const query = state.transcriptQuery.trim().toLowerCase();
+  return daySegments().filter((segment) => {
+    if (state.transcriptFilter !== "all" && segment.source !== state.transcriptFilter) {
+      return false;
+    }
+    if (query && !segment.text.toLowerCase().includes(query)) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function renderTranscriptList(): void {
+  const segments = visibleSegments();
+  const multiSource = transcriptSources().length > 1;
+  if (segments.length === 0) {
+    transcriptList.innerHTML = `<div class="transcript-empty">No lines${state.transcriptQuery ? " match your search" : ""}.</div>`;
+    return;
+  }
+  transcriptList.innerHTML = segments
+    .map((segment) => {
+      const badge = multiSource ? `<span class="transcript-source">${sourceLabel(segment.source)}</span>` : "";
+      return `<button type="button" class="transcript-line fs-exclude" data-abs="${Math.round(segment.absMs)}" data-end="${Math.round(segment.endMs)}">
+        <span class="transcript-time">${formatWallClock(segment.absMs)}</span>
+        ${badge}
+        <span class="transcript-text">${escapeHtml(segment.text)}</span>
+      </button>`;
+    })
+    .join("");
+  syncTranscriptHighlight(true);
+}
+
+function syncTranscriptHighlight(forceScroll = false): void {
+  if (transcriptPanel.hidden) {
+    return;
+  }
+  const rows = transcriptList.querySelectorAll<HTMLElement>(".transcript-line");
+  let active: HTMLElement | null = null;
+  for (const row of rows) {
+    const start = Number(row.dataset.abs);
+    const end = Number(row.dataset.end);
+    const isActive = state.playheadMs >= start && state.playheadMs <= Math.max(end, start + 1);
+    row.classList.toggle("is-active", isActive);
+    if (isActive && !active) {
+      active = row;
+    }
+  }
+  if (!active) {
+    // Fall back to the last line at or before the playhead.
+    let candidate: HTMLElement | null = null;
+    for (const row of rows) {
+      if (Number(row.dataset.abs) <= state.playheadMs) {
+        candidate = row;
+      }
+    }
+    if (candidate) {
+      candidate.classList.add("is-active");
+      active = candidate;
+    }
+  }
+  if (active && forceScroll) {
+    active.scrollIntoView({ block: "nearest" });
+  }
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (ch) => {
+    switch (ch) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      default:
+        return "&#39;";
+    }
+  });
 }
 
 function unlockAudio(): void {

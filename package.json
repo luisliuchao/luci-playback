@@ -16,7 +16,11 @@
     "test": "node --experimental-strip-types --test src/audio.test.ts src/timeline.test.ts src/pickError.test.ts"
   },
   "devDependencies": {
+    "@types/sql.js": "^1.4.11",
     "typescript": "^5.8.3",
     "vite": "^6.3.5"
+  },
+  "dependencies": {
+    "sql.js": "^1.14.2"
   }
 }

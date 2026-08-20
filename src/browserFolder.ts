@@ -22,6 +22,7 @@ const STAGING_DIR = /(?:^|\/)(?:audio-tmp|audio_tmp|tmp|temp|staging)(?:\/|$)/i;
 const HANDLE_DB = "luci-playback";
 const HANDLE_STORE = "handles";
 const SCREENSHOT_KEY = "screenshotKey";
+const DB_SECRET_KEY = "dbSecret";
 
 type SavedScreenshotKey = {
   key: CryptoKey;
@@ -51,6 +52,7 @@ export type FolderIndex = {
   captures: LocalCapture[];
   audios: LocalAudio[];
   dbkey?: ArrayBuffer;
+  indexDb?: () => Promise<ArrayBuffer>;
   encrypted: number;
   needPassword: boolean;
 };
@@ -137,9 +139,47 @@ export async function forgetScreenshotKey(): Promise<void> {
   try {
     const db = await openHandleDb();
     await idbDelete(db, SCREENSHOT_KEY);
+    await idbDelete(db, DB_SECRET_KEY);
   } catch {
     return;
   }
+}
+
+// The transcript database (index.db) uses the same .dbkey. Resolve the raw
+// passphrase the sqleet KDF expects, mirroring the frame-key unseal exactly:
+// v10-sealed -> Chromium unseal -> the 44-byte secret; hex64 -> raw bytes.
+export async function resolveDbSecret(dbkey: ArrayBuffer, password?: string): Promise<Uint8Array> {
+  const sealed = new Uint8Array(dbkey);
+  if (!isChromiumSealed(sealed)) {
+    const text = new TextDecoder().decode(sealed).trim();
+    if (/^[0-9a-fA-F]{64}$/.test(text)) {
+      return copyBytes(hexToBytes(text));
+    }
+    return copyBytes(sealed);
+  }
+  if (!password) {
+    throw new Error("Password required");
+  }
+  const material = await pbkdf2(password);
+  const secret = await aesCbcDecrypt(copyBytes(material), new Uint8Array(16).fill(32), copyBytes(sealed.subarray(3)));
+  return new TextEncoder().encode(new TextDecoder().decode(secret));
+}
+
+export async function rememberDbSecret(dbkey: ArrayBuffer, secret: Uint8Array): Promise<void> {
+  try {
+    const db = await openHandleDb();
+    await idbPut(db, DB_SECRET_KEY, { secret: copyBytes(secret).buffer, fingerprint: await dbkeyFingerprint(dbkey) });
+  } catch {
+    return;
+  }
+}
+
+export async function loadDbSecret(dbkey: ArrayBuffer): Promise<Uint8Array | null> {
+  const record = await idbGet<{ secret: ArrayBuffer; fingerprint: string }>(DB_SECRET_KEY);
+  if (!record || record.fingerprint !== (await dbkeyFingerprint(dbkey))) {
+    return null;
+  }
+  return new Uint8Array(record.secret);
 }
 
 export async function keyUnlocksCaptures(key: CryptoKey, captures: LocalCapture[]): Promise<boolean> {
@@ -228,6 +268,7 @@ function pickWithInput(input: HTMLInputElement): Promise<File[]> {
 async function indexDirectoryHandle(root: FileSystemDirectoryHandle): Promise<FolderIndex> {
   const files: Array<{ relativePath: string; lastModified: number; read: () => Promise<ArrayBuffer> }> = [];
   let dbkey: ArrayBuffer | undefined;
+  let indexDb: (() => Promise<ArrayBuffer>) | undefined;
   const walk = async (dir: FileSystemDirectoryHandle, prefix: string, depth: number): Promise<void> => {
     if (depth > 8) {
       return;
@@ -245,6 +286,10 @@ async function indexDirectoryHandle(root: FileSystemDirectoryHandle): Promise<Fo
         dbkey = await (await entry.getFile()).arrayBuffer();
         continue;
       }
+      if (name === "index.db" && entry.kind === "file") {
+        indexDb = () => entry.getFile().then((next) => next.arrayBuffer());
+        continue;
+      }
       if (!isCaptureName(name, relativePath) && !isAudioName(name, relativePath)) {
         continue;
       }
@@ -257,17 +302,22 @@ async function indexDirectoryHandle(root: FileSystemDirectoryHandle): Promise<Fo
     }
   };
   await walk(root, "", 0);
-  return buildIndex(root.name, files, dbkey);
+  return buildIndex(root.name, files, dbkey, indexDb);
 }
 
 async function indexFileList(list: File[]): Promise<FolderIndex> {
   let dbkey: ArrayBuffer | undefined;
+  let indexDb: (() => Promise<ArrayBuffer>) | undefined;
   const files: Array<{ relativePath: string; lastModified: number; read: () => Promise<ArrayBuffer> }> = [];
   for (const file of list) {
     const relativePath = file.webkitRelativePath || file.name;
     const name = relativePath.split("/").pop() ?? file.name;
     if (name === ".dbkey") {
       dbkey = await file.arrayBuffer();
+      continue;
+    }
+    if (name === "index.db") {
+      indexDb = () => file.arrayBuffer();
       continue;
     }
     if (!isCaptureName(name, relativePath) && !isAudioName(name, relativePath)) {
@@ -280,7 +330,7 @@ async function indexFileList(list: File[]): Promise<FolderIndex> {
     });
   }
   const name = list[0]?.webkitRelativePath.split("/")[0] ?? "folder";
-  return buildIndex(name, files, dbkey);
+  return buildIndex(name, files, dbkey, indexDb);
 }
 
 function isCaptureName(name: string, relativePath = name): boolean {
@@ -304,6 +354,7 @@ function buildIndex(
   name: string,
   files: Array<{ relativePath: string; lastModified: number; read: () => Promise<ArrayBuffer> }>,
   dbkey?: ArrayBuffer,
+  indexDb?: () => Promise<ArrayBuffer>,
 ): FolderIndex {
   const paths = files.map((file) => file.relativePath);
   const capturesRoot = detectCapturesPrefix(paths);
@@ -356,6 +407,7 @@ function buildIndex(
     captures,
     audios,
     dbkey,
+    indexDb,
     encrypted: 0,
     needPassword,
   };
