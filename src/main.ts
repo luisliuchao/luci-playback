@@ -1,5 +1,5 @@
 import "./style.css";
-import { alignClipToFrames, clampPlaybackRate, clipsCoveringTime, seekOffset } from "./audio";
+import { alignClipToFrames, clampPlaybackRate, clipsCoveringTime, seekOffset, streamKey } from "./audio";
 import {
   JUMP_MS,
   SCRUB_STEPS,
@@ -119,6 +119,7 @@ const state = {
 type AudioClip = LocalAudio & {
   src?: string;
   durationMs?: number;
+  stream: string;
 };
 
 app.innerHTML = `
@@ -559,6 +560,7 @@ function loadFolderFrames(): void {
       return {
         ...clip,
         timeMs: alignClipToFrames(clip.timeMs, clip.timed, firstFrameMs, lastFrameMs),
+        stream: streamKey(clip.relativePath),
       };
     });
   if (state.frames.length === 0) {
@@ -886,14 +888,48 @@ function unlockAudio(): void {
   void playbackContext.resume();
 }
 
+// Pin each stream to one <audio> element so a mic chunk rotation can't
+// steal the player that is mid-way through the system-audio clip.
+const streamSlots = new Map<string, number>();
+
+function assignPlayers(clips: AudioClip[]): Array<AudioClip | undefined> {
+  const slots: Array<AudioClip | undefined> = new Array<AudioClip | undefined>(
+    audioPlayers.length,
+  ).fill(undefined);
+  const active = new Set(clips.map((clip) => clip.stream));
+  for (const stream of [...streamSlots.keys()]) {
+    if (!active.has(stream)) {
+      streamSlots.delete(stream);
+    }
+  }
+  const unplaced: AudioClip[] = [];
+  for (const clip of clips) {
+    const slot = streamSlots.get(clip.stream);
+    if (slot !== undefined && slots[slot] === undefined) {
+      slots[slot] = clip;
+    } else {
+      unplaced.push(clip);
+    }
+  }
+  for (const clip of unplaced) {
+    const free = slots.findIndex((slot) => slot === undefined);
+    if (free === -1) {
+      break;
+    }
+    slots[free] = clip;
+    streamSlots.set(clip.stream, free);
+  }
+  return slots;
+}
+
 function kickAudio(): void {
   const timeMs = playheadTime();
   if (timeMs === null) {
     return;
   }
-  const clips = clipsForTime(timeMs);
+  const slots = assignPlayers(clipsForTime(timeMs));
   for (const [index, player] of audioPlayers.entries()) {
-    const clip = clips[index];
+    const clip = slots[index];
     if (!clip?.src) {
       continue;
     }
@@ -910,6 +946,7 @@ function kickAudio(): void {
 
 function stopAudio(): void {
   syncGeneration += 1;
+  streamSlots.clear();
   for (const player of audioPlayers) {
     player.pause();
     player.removeAttribute("src");
@@ -1045,9 +1082,10 @@ async function syncAudio(): Promise<void> {
   if (generation !== syncGeneration) {
     return;
   }
+  const slots = assignPlayers(clips);
   await Promise.all(
     audioPlayers.map(async (player, index) => {
-      const clip = clips[index];
+      const clip = slots[index];
       if (!clip) {
         player.pause();
         return;

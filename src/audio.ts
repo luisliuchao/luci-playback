@@ -2,25 +2,55 @@ export type TimedClip = {
   timeMs: number;
   durationMs?: number;
   timed: boolean;
+  stream?: string;
 };
 
+// Chunks of one recording stream (e.g. a rotating mic capture) share a path
+// shape where only the digits vary; different streams (mic vs system) differ
+// in the rest of the path.
+export function streamKey(relativePath: string): string {
+  return relativePath.replace(/\d+/g, "#");
+}
+
+// Duration of a chunk may only be inferred from the next chunk of the SAME
+// stream — using the merged timeline would let a parallel track (mic vs
+// system) truncate the other stream's clip. Returns at most one covering
+// clip per stream, newest first within the stream.
 export function clipsCoveringTime<T extends TimedClip>(clips: T[], timeMs: number, limit: number): T[] {
-  const covering: T[] = [];
-  for (let index = 0; index < clips.length; index += 1) {
-    const clip = clips[index];
-    const next = clips[index + 1];
-    const nextGap = next ? next.timeMs - clip.timeMs : undefined;
-    const fromNext = nextGap !== undefined && nextGap > 2000 ? nextGap : undefined;
-    const durationMs = clip.durationMs ?? fromNext;
-    const estimated = durationMs ?? (clip.timed ? 5 * 60_000 : Number.POSITIVE_INFINITY);
-    if (timeMs < clip.timeMs) {
-      continue;
+  const streams = new Map<string, T[]>();
+  for (const [index, clip] of clips.entries()) {
+    const key = clip.stream ?? `#anon-${index}`;
+    const list = streams.get(key);
+    if (list) {
+      list.push(clip);
+    } else {
+      streams.set(key, [clip]);
     }
-    if (timeMs >= clip.timeMs + estimated) {
-      continue;
-    }
-    covering.push(clip);
   }
+  const covering: T[] = [];
+  for (const list of streams.values()) {
+    const sorted = [...list].sort((a, b) => a.timeMs - b.timeMs);
+    let latest: T | undefined;
+    for (let index = 0; index < sorted.length; index += 1) {
+      const clip = sorted[index];
+      const next = sorted[index + 1];
+      const nextGap = next ? next.timeMs - clip.timeMs : undefined;
+      const fromNext = nextGap !== undefined && nextGap > 2000 ? nextGap : undefined;
+      const durationMs = clip.durationMs ?? fromNext;
+      const estimated = durationMs ?? (clip.timed ? 5 * 60_000 : Number.POSITIVE_INFINITY);
+      if (timeMs < clip.timeMs) {
+        continue;
+      }
+      if (timeMs >= clip.timeMs + estimated) {
+        continue;
+      }
+      latest = clip;
+    }
+    if (latest) {
+      covering.push(latest);
+    }
+  }
+  covering.sort((a, b) => a.timeMs - b.timeMs);
   return covering.slice(-limit);
 }
 

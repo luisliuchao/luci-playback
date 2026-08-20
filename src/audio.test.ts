@@ -7,6 +7,7 @@ import {
   clipsCoveringTime,
   seekOffset,
   sniffAudioMime,
+  streamKey,
   wrapPcmAsWav,
 } from "./audio.ts";
 
@@ -35,6 +36,37 @@ test("does not treat a parallel track as the end of the other clip", () => {
   ];
   const found = clipsCoveringTime(clips, 60_000, 2);
   assert.equal(found.length, 2);
+});
+
+test("a mic chunk starting later must not truncate the system clip", () => {
+  const clips = [
+    { timeMs: 0, timed: true, stream: "system/#.wav" },
+    { timeMs: 20_000, timed: true, stream: "mic/#.wav" },
+    { timeMs: 50_000, timed: true, stream: "mic/#.wav" },
+  ];
+  const found = clipsCoveringTime(clips, 60_000, 2);
+  assert.deepEqual(
+    found.map((clip) => clip.stream).sort(),
+    ["mic/#.wav", "system/#.wav"],
+  );
+  assert.equal(found.find((clip) => clip.stream === "mic/#.wav")?.timeMs, 50_000);
+});
+
+test("within a stream, chunk gaps still bound each chunk's duration", () => {
+  const clips = [
+    { timeMs: 0, timed: true, stream: "mic/#.wav" },
+    { timeMs: 30_000, timed: true, stream: "mic/#.wav" },
+  ];
+  const found = clipsCoveringTime(clips, 45_000, 2);
+  assert.deepEqual(
+    found.map((clip) => clip.timeMs),
+    [30_000],
+  );
+});
+
+test("streamKey groups rotating chunks and separates mic from system", () => {
+  assert.equal(streamKey("audio/mic-20260820-091500.wav"), streamKey("audio/mic-20260820-092000.wav"));
+  assert.notEqual(streamKey("audio/mic-20260820-091500.wav"), streamKey("audio/system-20260820-091500.wav"));
 });
 
 test("seekOffset stays inside the clip", () => {
