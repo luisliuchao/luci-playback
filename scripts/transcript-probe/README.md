@@ -27,6 +27,23 @@ node probe.js --db ... --dbkey ... --password "$(security find-generic-password 
 Add `--sample` to preview up to 3 rows of the most transcript-like table
 (local only — do this only if you're fine seeing your own transcript text).
 
+## Step 2: verify the browser decryption path
+
+After the probe unlocks the DB, confirm the pure-JS decryptor (the exact logic
+the browser will use) reproduces the native read, on a **copy** of your DB:
+
+```bash
+node verify.js \
+  --db ~/.luciMicrosoft/screen-memory/index.db \
+  --dbkey ~/.luciMicrosoft/screen-memory/.dbkey \
+  --password "$(security find-generic-password -s 'luci-electron Safe Storage' -w)"
+```
+
+It copies the database to a temp dir, folds in any WAL, reads it with the native
+cipher as ground truth, then tries the pure-JS decryptor across candidate
+`kdf_iter`/`skip` values and prints which one matches. Send back the final
+`✅ ... kdf_iter=... skip=...` line (no transcript content).
+
 ## What to send back
 
 Copy the `✅ UNLOCKED` block: the winning **candidate**, **cipher**, **method**,

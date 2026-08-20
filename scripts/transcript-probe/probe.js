@@ -179,7 +179,12 @@ function dumpSchema(db) {
     } catch {
       /* view or virtual */
     }
-    const cols = db.prepare(`PRAGMA table_info("${obj.name}")`).all().map((c) => `${c.name}:${c.type || "?"}`);
+    let cols = [];
+    try {
+      cols = db.prepare(`PRAGMA table_info("${obj.name}")`).all().map((c) => `${c.name}:${c.type || "?"}`);
+    } catch (e) {
+      cols = [`(columns unavailable: ${e.message})`];
+    }
     console.log(`\n  • ${obj.name} (${count} rows)`);
     console.log(`      columns: ${cols.join(", ")}`);
     const hay = `${obj.name} ${cols.join(" ")}`.toLowerCase();
