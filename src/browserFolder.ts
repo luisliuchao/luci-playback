@@ -16,6 +16,9 @@ const IMAGE_FILES = /\.(jpe?g|png|webp|gif|enc|bin|luci)$/i;
 const AUDIO_FILES = /\.(wav|mp3|m4a|aac|ogg|oga|opus|webm|flac|caf|pcm|raw|aiff|aif)$/i;
 const AUDIO_DIR =
   /(?:^|\/)(?:audio|audios|audio-chunks|audio_chunks|recordings|mic|microphone|system-audio|system_audio|systemaudio|pcm|wavs?|voice|voices|sound|sounds|speech|meeting|meetings|media)(?:\/|$)/i;
+// Luci's capture staging buffer: chunks land here briefly, get transcribed,
+// then deleted — playing them yields files that vanish mid-session.
+const STAGING_DIR = /(?:^|\/)(?:audio-tmp|audio_tmp|tmp|temp|staging)(?:\/|$)/i;
 const HANDLE_DB = "luci-playback";
 const HANDLE_STORE = "handles";
 const SCREENSHOT_KEY = "screenshotKey";
@@ -308,6 +311,9 @@ function buildIndex(
   const captures: LocalCapture[] = [];
   const audios: LocalAudio[] = [];
   for (const file of files) {
+    if (STAGING_DIR.test(file.relativePath)) {
+      continue;
+    }
     const base = file.relativePath.split("/").pop() ?? file.relativePath;
     if (isAudioName(base, file.relativePath)) {
       const relative = stripPrefix(file.relativePath, audioRoot || capturesRoot);

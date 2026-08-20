@@ -15,7 +15,9 @@ https://luci.luisliuchao.com · [About](https://luci.luisliuchao.com/about.html)
    - Linux / Windows: pick `~/.luci`
 4. If frames are encrypted, enter the Luci Safe Storage password. The password never leaves this computer. This browser keeps the unlock so you can refresh.
 
-Playback follows real timestamps (usually ~5s between frames) at 1x–30x. The scrub bar is the captured day, not frame count, and the clock shows the time of the current frame. Space plays or pauses; arrows or `j`/`l` step one frame; `,`/`.` jump 10 seconds; Shift+arrows jump one minute. If the Luci folder has audio (mic or system), it plays in sync. `m` mutes.
+Playback follows real timestamps (usually ~5s between frames) at 1x–30x. The scrub bar is the captured day, not frame count, and the clock shows the time of the current frame. Space plays or pauses; arrows or `j`/`l` step one frame; `,`/`.` jump 10 seconds; Shift+arrows jump one minute. If the Luci folder has retained audio (mic or system), it plays in sync. `m` mutes.
+
+Note: current Luci builds transcribe audio and delete the recording — only a transient staging buffer (`screen-memory/audio-tmp/`) exists, which this player deliberately ignores. Audio playback works when your Luci version or configuration keeps recordings (e.g. an `audio/`, `audio-chunks/`, or `recordings/` folder). Transcripts live in Luci's encrypted `index.db` and are not readable by this player yet.
 
 ## Decrypting frames
 
