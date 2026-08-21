@@ -54,6 +54,7 @@ const SOUND = `<svg viewBox="0 0 24 24"><path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2c
 const MUTE = `<svg viewBox="0 0 24 24"><path d="M16.5 12c0-1.77-1-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v4h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4 9.91 6.09 12 8.18V4z"/></svg>`;
 const MORE = `<svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>`;
 const CC = `<svg viewBox="0 0 24 24"><path d="M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM11 11H9.5v-.5h-2v3h2V13H11v1a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1zm7 0h-1.5v-.5h-2v3h2V13H18v1a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1z"/></svg>`;
+const LIST = `<svg viewBox="0 0 24 24"><path d="M3 5h2v2H3zm0 6h2v2H3zm0 6h2v2H3zm4-12h14v2H7zm0 6h14v2H7zm0 6h14v2H7z"/></svg>`;
 const RESET = `<svg viewBox="0 0 24 24"><path d="M12 6V3L8 7l4 4V8c2.76 0 5 2.24 5 5a5 5 0 0 1-8.9 3.1L6.64 17.6A7 7 0 0 0 19 13c0-3.87-3.13-7-7-7z"/></svg>`;
 const MAIL = `<svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4-8 5L4 8V6l8 5 8-5v2z"/></svg>`;
 const INFO = `<svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>`;
@@ -126,6 +127,7 @@ const state = {
   transcriptLoading: false,
   transcriptNeedsPassword: false,
   unlockingTranscript: false,
+  captionsOn: loadCaptionsPref(),
 };
 
 type AudioClip = LocalAudio & {
@@ -166,6 +168,7 @@ app.innerHTML = `
       <p class="disclaimer">Your password never leaves this computer. This browser keeps the unlock so you can refresh.</p>
     </form>
     <div class="big-play" id="bigPlay">${PLAY}</div>
+    <div class="caption fs-exclude" id="caption" hidden></div>
     <div class="shade"></div>
     <div class="controls" id="controls">
       <div class="scrub-wrap" id="scrubWrap">
@@ -177,7 +180,8 @@ app.innerHTML = `
         <button class="icon" id="next" type="button" disabled aria-label="Next frame" data-tip="Next frame (l)">${NEXT}</button>
         <div class="time" id="time" data-tip="Current time / last frame">0:00:00 / 0:00:00</div>
         <div class="grow"></div>
-        <button class="icon" id="transcript" type="button" hidden aria-label="Transcript" aria-pressed="false" data-tip="Transcript (c)">${CC}</button>
+        <button class="icon" id="captions" type="button" hidden aria-label="Captions" aria-pressed="false" data-tip="Captions (c)">${CC}</button>
+        <button class="icon" id="openTranscript" type="button" hidden aria-label="Transcript" aria-pressed="false" data-tip="Transcript">${LIST}</button>
         <button class="icon" id="mute" type="button" hidden aria-label="Mute" data-tip="Mute (m)">${SOUND}</button>
         <select id="speed" aria-label="Playback speed" data-tip="Playback speed">
           <option value="1">1x</option>
@@ -223,7 +227,9 @@ const prevButton = must<HTMLButtonElement>("#prev");
 const nextButton = must<HTMLButtonElement>("#next");
 const fullButton = must("#full");
 const muteButton = must<HTMLButtonElement>("#mute");
-const transcriptButton = must<HTMLButtonElement>("#transcript");
+const captionsButton = must<HTMLButtonElement>("#captions");
+const panelButton = must<HTMLButtonElement>("#openTranscript");
+const caption = must("#caption");
 const transcriptPanel = must("#transcriptPanel");
 const transcriptClose = must<HTMLButtonElement>("#transcriptClose");
 const transcriptSearch = must<HTMLInputElement>("#transcriptSearch");
@@ -315,9 +321,13 @@ muteButton.addEventListener("click", (event) => {
   event.stopPropagation();
   toggleMute();
 });
-transcriptButton.addEventListener("click", (event) => {
+captionsButton.addEventListener("click", (event) => {
   event.stopPropagation();
-  toggleTranscript();
+  toggleCaptions();
+});
+panelButton.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleTranscriptPanel();
 });
 transcriptClose.addEventListener("click", (event) => {
   event.stopPropagation();
@@ -452,7 +462,7 @@ window.addEventListener("keydown", (event) => {
   } else if (event.key === "m") {
     toggleMute();
   } else if (event.key === "c") {
-    toggleTranscript();
+    toggleCaptions();
   }
 });
 
@@ -885,12 +895,17 @@ function renderControls(): void {
   muteButton.innerHTML = state.muted ? MUTE : SOUND;
   muteButton.ariaLabel = state.muted ? "Unmute" : "Mute";
   muteButton.dataset.tip = state.muted ? "Unmute (m)" : "Mute (m)";
-  transcriptButton.hidden = !(
+  const transcriptAvailable = Boolean(
     state.folder?.indexDb &&
-    !state.needPassword &&
-    (daySegments().length > 0 || state.transcriptNeedsPassword)
+      !state.needPassword &&
+      (daySegments().length > 0 || state.transcriptNeedsPassword)
   );
+  captionsButton.hidden = !transcriptAvailable;
+  captionsButton.setAttribute("aria-pressed", String(state.captionsOn && !state.transcriptNeedsPassword));
+  panelButton.hidden = !(state.folder?.indexDb && !state.needPassword && daySegments().length > 0);
+  panelButton.setAttribute("aria-pressed", String(state.transcriptOpen));
   syncTranscriptHighlight();
+  syncCaption();
   bigPlay.innerHTML = state.playing ? PAUSE : PLAY;
   player.classList.toggle("is-paused", !state.playing);
   player.classList.toggle("is-playing", state.playing);
@@ -982,14 +997,31 @@ function toggleMute(): void {
   renderControls();
 }
 
-function toggleTranscript(): void {
+function promptTranscriptPassword(): void {
+  // Reuse the unlock form to collect the password; unlockFolder derives and
+  // caches the database key, then the transcript loads.
+  state.unlockingTranscript = true;
+  state.needPassword = true;
+  render();
+  safePass.focus();
+}
+
+function toggleCaptions(): void {
   if (state.transcriptNeedsPassword) {
-    // Reuse the unlock form to collect the password; unlockFolder derives and
-    // caches the database key, then the transcript loads and opens.
-    state.unlockingTranscript = true;
-    state.needPassword = true;
-    render();
-    safePass.focus();
+    promptTranscriptPassword();
+    return;
+  }
+  if (daySegments().length === 0 && !state.transcriptLoading) {
+    return;
+  }
+  state.captionsOn = !state.captionsOn;
+  saveCaptionsPref(state.captionsOn);
+  renderControls();
+}
+
+function toggleTranscriptPanel(): void {
+  if (state.transcriptNeedsPassword) {
+    promptTranscriptPassword();
     return;
   }
   if (daySegments().length === 0) {
@@ -1001,6 +1033,65 @@ function toggleTranscript(): void {
 
 function daySegments(): TranscriptSegment[] {
   return state.transcript.filter((segment) => segment.day === state.day);
+}
+
+const captionsPrefKey = "luci-playback:captions";
+function loadCaptionsPref(): boolean {
+  try {
+    return localStorage.getItem(captionsPrefKey) === "1";
+  } catch {
+    return false;
+  }
+}
+function saveCaptionsPref(on: boolean): void {
+  try {
+    localStorage.setItem(captionsPrefKey, on ? "1" : "0");
+  } catch {
+    // Preference is best-effort.
+  }
+}
+
+// The line active at the current playhead: the most recent line that has begun,
+// kept on screen until the next line starts (bridging small gaps) but hidden
+// during long silences so stale text doesn't linger.
+function activeSegmentAt(timeMs: number): TranscriptSegment | null {
+  const segments = daySegments();
+  let lo = 0;
+  let hi = segments.length - 1;
+  let idx = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (segments[mid].absMs <= timeMs) {
+      idx = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  if (idx < 0) {
+    return null;
+  }
+  const segment = segments[idx];
+  const next = segments[idx + 1];
+  const gapGrace = 4000;
+  const until = next ? Math.min(next.absMs, segment.endMs + gapGrace) : segment.endMs + gapGrace;
+  return timeMs <= until ? segment : null;
+}
+
+function syncCaption(): void {
+  if (!state.captionsOn || daySegments().length === 0) {
+    caption.hidden = true;
+    return;
+  }
+  const segment = activeSegmentAt(state.playheadMs);
+  if (!segment) {
+    caption.hidden = true;
+    return;
+  }
+  if (caption.textContent !== segment.text) {
+    caption.textContent = segment.text;
+  }
+  caption.hidden = false;
 }
 
 async function loadTranscriptForFolder(): Promise<void> {
@@ -1041,8 +1132,8 @@ async function loadTranscriptForFolder(): Promise<void> {
 
 function renderTranscriptPanel(): void {
   const has = daySegments().length > 0;
-  transcriptButton.hidden = !has;
-  transcriptButton.setAttribute("aria-pressed", String(state.transcriptOpen && has));
+  panelButton.hidden = !(state.folder?.indexDb && !state.needPassword && has);
+  panelButton.setAttribute("aria-pressed", String(state.transcriptOpen && has));
   player.classList.toggle("transcript-open", state.transcriptOpen && has);
   transcriptPanel.hidden = !(state.transcriptOpen && has);
   if (state.transcriptOpen && has) {
