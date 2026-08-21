@@ -52,7 +52,7 @@ export type FolderIndex = {
   captures: LocalCapture[];
   audios: LocalAudio[];
   dbkey?: ArrayBuffer;
-  indexDb?: () => Promise<ArrayBuffer>;
+  indexDb?: () => Promise<Blob>;
   encrypted: number;
   needPassword: boolean;
 };
@@ -268,7 +268,7 @@ function pickWithInput(input: HTMLInputElement): Promise<File[]> {
 async function indexDirectoryHandle(root: FileSystemDirectoryHandle): Promise<FolderIndex> {
   const files: Array<{ relativePath: string; lastModified: number; read: () => Promise<ArrayBuffer> }> = [];
   let dbkey: ArrayBuffer | undefined;
-  let indexDb: (() => Promise<ArrayBuffer>) | undefined;
+  let indexDb: (() => Promise<Blob>) | undefined;
   const walk = async (dir: FileSystemDirectoryHandle, prefix: string, depth: number): Promise<void> => {
     if (depth > 8) {
       return;
@@ -287,7 +287,7 @@ async function indexDirectoryHandle(root: FileSystemDirectoryHandle): Promise<Fo
         continue;
       }
       if (name === "index.db" && entry.kind === "file") {
-        indexDb = () => entry.getFile().then((next) => next.arrayBuffer());
+        indexDb = () => entry.getFile();
         continue;
       }
       if (!isCaptureName(name, relativePath) && !isAudioName(name, relativePath)) {
@@ -307,7 +307,7 @@ async function indexDirectoryHandle(root: FileSystemDirectoryHandle): Promise<Fo
 
 async function indexFileList(list: File[]): Promise<FolderIndex> {
   let dbkey: ArrayBuffer | undefined;
-  let indexDb: (() => Promise<ArrayBuffer>) | undefined;
+  let indexDb: (() => Promise<Blob>) | undefined;
   const files: Array<{ relativePath: string; lastModified: number; read: () => Promise<ArrayBuffer> }> = [];
   for (const file of list) {
     const relativePath = file.webkitRelativePath || file.name;
@@ -317,7 +317,7 @@ async function indexFileList(list: File[]): Promise<FolderIndex> {
       continue;
     }
     if (name === "index.db") {
-      indexDb = () => file.arrayBuffer();
+      indexDb = () => Promise.resolve(file as Blob);
       continue;
     }
     if (!isCaptureName(name, relativePath) && !isAudioName(name, relativePath)) {
@@ -354,7 +354,7 @@ function buildIndex(
   name: string,
   files: Array<{ relativePath: string; lastModified: number; read: () => Promise<ArrayBuffer> }>,
   dbkey?: ArrayBuffer,
-  indexDb?: () => Promise<ArrayBuffer>,
+  indexDb?: () => Promise<Blob>,
 ): FolderIndex {
   const paths = files.map((file) => file.relativePath);
   const capturesRoot = detectCapturesPrefix(paths);

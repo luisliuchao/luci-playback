@@ -109,9 +109,39 @@ async function pbkdf2Sha256(secret: Uint8Array, salt: Uint8Array, iterations: nu
   return new Uint8Array(bits);
 }
 
-function pageSizeOf(file: Uint8Array): number {
-  const raw = (file[16] << 8) | file[17];
+export function pageSizeOf(header: Uint8Array): number {
+  const raw = (header[16] << 8) | header[17];
   return raw === 1 ? 65536 : raw;
+}
+
+export const RESERVED_BYTES = RESERVED;
+
+// Derive the sqleet master key from the file's 16-byte salt and the passphrase.
+export async function deriveMasterKey(salt16: Uint8Array, secret: Uint8Array): Promise<Uint8Array> {
+  return pbkdf2Sha256(secret, salt16, CHACHA_ITER, 32);
+}
+
+// Decrypt a single page (full pageSize bytes) in place-safe fashion, returning
+// a decrypted copy. pageNo is 1-based. Enables lazy, page-at-a-time reads so a
+// multi-GB database never has to be decrypted or held in memory in full.
+export function decryptPage(masterKey: Uint8Array, page: Uint8Array, pageNo: number): Uint8Array {
+  selfTest();
+  const pageSize = page.length;
+  const n = pageSize - RESERVED;
+  const out = page.slice(0);
+  const nonce = out.subarray(n, n + 16);
+  const nonce12 = nonce.subarray(0, 12);
+  const nonceCtr = (nonce[12] | (nonce[13] << 8) | (nonce[14] << 16) | (nonce[15] << 24)) >>> 0;
+  const counter = (nonceCtr ^ pageNo) >>> 0;
+  const otk = new Uint8Array(64);
+  chacha20Xor(masterKey, nonce12, counter, otk);
+  const dataKey = otk.subarray(32, 64);
+  const skip = pageNo === 1 ? PAGE1_SKIP : 0;
+  chacha20Xor(dataKey, nonce12, (counter + 1) >>> 0, out.subarray(skip, n));
+  if (pageNo === 1) {
+    out.set(new TextEncoder().encode("SQLite format 3\0"), 0);
+  }
+  return out;
 }
 
 // Decrypt a sqleet/SQLite3MultipleCiphers chacha20 database to plaintext bytes.

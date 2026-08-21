@@ -997,9 +997,9 @@ async function loadTranscriptForFolder(): Promise<void> {
       secret = await resolveDbSecret(folder.dbkey);
       await rememberDbSecret(folder.dbkey, secret);
     }
-    const bytes = new Uint8Array(await folder.indexDb());
+    const blob = await folder.indexDb();
     const { loadTranscript } = await import("./transcript");
-    state.transcript = await loadTranscript(bytes, secret);
+    state.transcript = await loadTranscript(blob, secret);
     renderControls();
     renderTranscriptPanel();
   } catch (error) {
