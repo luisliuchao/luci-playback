@@ -1,5 +1,3 @@
-import { audioBlobFromPlain } from "./audio";
-
 const DAY_RE = /^\d{8}$/;
 const MAGIC = new TextEncoder().encode("LUCISS01");
 const SKIP_DIRS = new Set([
@@ -13,16 +11,9 @@ const SKIP_DIRS = new Set([
 ]);
 const SKIP_FILES = /\.(json|sqlite|db|wal|log|txt|md|dylib|so|exe)$/i;
 const IMAGE_FILES = /\.(jpe?g|png|webp|gif|enc|bin|luci)$/i;
-const AUDIO_FILES = /\.(wav|mp3|m4a|aac|ogg|oga|opus|webm|flac|caf|pcm|raw|aiff|aif)$/i;
-const AUDIO_DIR =
-  /(?:^|\/)(?:audio|audios|audio-chunks|audio_chunks|recordings|mic|microphone|system-audio|system_audio|systemaudio|pcm|wavs?|voice|voices|sound|sounds|speech|meeting|meetings|media)(?:\/|$)/i;
-// Luci's capture staging buffer: chunks land here briefly, get transcribed,
-// then deleted — playing them yields files that vanish mid-session.
-const STAGING_DIR = /(?:^|\/)(?:audio-tmp|audio_tmp|tmp|temp|staging)(?:\/|$)/i;
 const HANDLE_DB = "luci-playback";
 const HANDLE_STORE = "handles";
 const SCREENSHOT_KEY = "screenshotKey";
-const DB_SECRET_KEY = "dbSecret";
 
 type SavedScreenshotKey = {
   key: CryptoKey;
@@ -38,21 +29,11 @@ export type LocalCapture = {
   read: () => Promise<ArrayBuffer>;
 };
 
-export type LocalAudio = {
-  day: string;
-  timeMs: number;
-  timed: boolean;
-  relativePath: string;
-  read: () => Promise<ArrayBuffer>;
-};
-
 export type FolderIndex = {
   name: string;
   days: string[];
   captures: LocalCapture[];
-  audios: LocalAudio[];
   dbkey?: ArrayBuffer;
-  indexDb?: () => Promise<Blob>;
   encrypted: number;
   needPassword: boolean;
 };
@@ -139,47 +120,9 @@ export async function forgetScreenshotKey(): Promise<void> {
   try {
     const db = await openHandleDb();
     await idbDelete(db, SCREENSHOT_KEY);
-    await idbDelete(db, DB_SECRET_KEY);
   } catch {
     return;
   }
-}
-
-// The transcript database (index.db) uses the same .dbkey. Resolve the raw
-// passphrase the sqleet KDF expects, mirroring the frame-key unseal exactly:
-// v10-sealed -> Chromium unseal -> the 44-byte secret; hex64 -> raw bytes.
-export async function resolveDbSecret(dbkey: ArrayBuffer, password?: string): Promise<Uint8Array> {
-  const sealed = new Uint8Array(dbkey);
-  if (!isChromiumSealed(sealed)) {
-    const text = new TextDecoder().decode(sealed).trim();
-    if (/^[0-9a-fA-F]{64}$/.test(text)) {
-      return copyBytes(hexToBytes(text));
-    }
-    return copyBytes(sealed);
-  }
-  if (!password) {
-    throw new Error("Password required");
-  }
-  const material = await pbkdf2(password);
-  const secret = await aesCbcDecrypt(copyBytes(material), new Uint8Array(16).fill(32), copyBytes(sealed.subarray(3)));
-  return new TextEncoder().encode(new TextDecoder().decode(secret));
-}
-
-export async function rememberDbSecret(dbkey: ArrayBuffer, secret: Uint8Array): Promise<void> {
-  try {
-    const db = await openHandleDb();
-    await idbPut(db, DB_SECRET_KEY, { secret: copyBytes(secret).buffer, fingerprint: await dbkeyFingerprint(dbkey) });
-  } catch {
-    return;
-  }
-}
-
-export async function loadDbSecret(dbkey: ArrayBuffer): Promise<Uint8Array | null> {
-  const record = await idbGet<{ secret: ArrayBuffer; fingerprint: string }>(DB_SECRET_KEY);
-  if (!record || record.fingerprint !== (await dbkeyFingerprint(dbkey))) {
-    return null;
-  }
-  return new Uint8Array(record.secret);
 }
 
 export async function keyUnlocksCaptures(key: CryptoKey, captures: LocalCapture[]): Promise<boolean> {
@@ -268,7 +211,6 @@ function pickWithInput(input: HTMLInputElement): Promise<File[]> {
 async function indexDirectoryHandle(root: FileSystemDirectoryHandle): Promise<FolderIndex> {
   const files: Array<{ relativePath: string; lastModified: number; read: () => Promise<ArrayBuffer> }> = [];
   let dbkey: ArrayBuffer | undefined;
-  let indexDb: (() => Promise<Blob>) | undefined;
   const walk = async (dir: FileSystemDirectoryHandle, prefix: string, depth: number): Promise<void> => {
     if (depth > 8) {
       return;
@@ -286,11 +228,7 @@ async function indexDirectoryHandle(root: FileSystemDirectoryHandle): Promise<Fo
         dbkey = await (await entry.getFile()).arrayBuffer();
         continue;
       }
-      if (name === "index.db" && entry.kind === "file") {
-        indexDb = () => entry.getFile();
-        continue;
-      }
-      if (!isCaptureName(name, relativePath) && !isAudioName(name, relativePath)) {
+      if (!isCaptureName(name)) {
         continue;
       }
       const file = await entry.getFile();
@@ -302,12 +240,11 @@ async function indexDirectoryHandle(root: FileSystemDirectoryHandle): Promise<Fo
     }
   };
   await walk(root, "", 0);
-  return buildIndex(root.name, files, dbkey, indexDb);
+  return buildIndex(root.name, files, dbkey);
 }
 
 async function indexFileList(list: File[]): Promise<FolderIndex> {
   let dbkey: ArrayBuffer | undefined;
-  let indexDb: (() => Promise<Blob>) | undefined;
   const files: Array<{ relativePath: string; lastModified: number; read: () => Promise<ArrayBuffer> }> = [];
   for (const file of list) {
     const relativePath = file.webkitRelativePath || file.name;
@@ -316,11 +253,7 @@ async function indexFileList(list: File[]): Promise<FolderIndex> {
       dbkey = await file.arrayBuffer();
       continue;
     }
-    if (name === "index.db") {
-      indexDb = () => Promise.resolve(file as Blob);
-      continue;
-    }
-    if (!isCaptureName(name, relativePath) && !isAudioName(name, relativePath)) {
+    if (!isCaptureName(name)) {
       continue;
     }
     files.push({
@@ -330,58 +263,25 @@ async function indexFileList(list: File[]): Promise<FolderIndex> {
     });
   }
   const name = list[0]?.webkitRelativePath.split("/")[0] ?? "folder";
-  return buildIndex(name, files, dbkey, indexDb);
+  return buildIndex(name, files, dbkey);
 }
 
-function isCaptureName(name: string, relativePath = name): boolean {
-  if (name.startsWith(".") || SKIP_FILES.test(name) || isAudioName(name, relativePath)) {
-    return false;
-  }
-  return IMAGE_FILES.test(name) || !name.includes(".");
-}
-
-function isAudioName(name: string, relativePath = name): boolean {
+function isCaptureName(name: string): boolean {
   if (name.startsWith(".") || SKIP_FILES.test(name)) {
     return false;
   }
-  if (AUDIO_FILES.test(name)) {
-    return true;
-  }
-  return AUDIO_DIR.test(relativePath) && !IMAGE_FILES.test(name);
+  return IMAGE_FILES.test(name) || !name.includes(".");
 }
 
 function buildIndex(
   name: string,
   files: Array<{ relativePath: string; lastModified: number; read: () => Promise<ArrayBuffer> }>,
   dbkey?: ArrayBuffer,
-  indexDb?: () => Promise<Blob>,
 ): FolderIndex {
   const paths = files.map((file) => file.relativePath);
   const capturesRoot = detectCapturesPrefix(paths);
-  const audioRoot = detectAudioPrefix(paths);
   const captures: LocalCapture[] = [];
-  const audios: LocalAudio[] = [];
   for (const file of files) {
-    if (STAGING_DIR.test(file.relativePath)) {
-      continue;
-    }
-    const base = file.relativePath.split("/").pop() ?? file.relativePath;
-    if (isAudioName(base, file.relativePath)) {
-      const relative = stripPrefix(file.relativePath, audioRoot || capturesRoot);
-      const day = dayFromPath(relative, file.lastModified);
-      if (!day) {
-        continue;
-      }
-      const stamp = guessAudioTime(relative, file.lastModified, day);
-      audios.push({
-        day,
-        timeMs: stamp.timeMs,
-        timed: stamp.timed,
-        relativePath: file.relativePath,
-        read: file.read,
-      });
-      continue;
-    }
     const relative = stripPrefix(file.relativePath, capturesRoot);
     const day = dayFromPath(relative, file.lastModified);
     if (!day) {
@@ -398,31 +298,16 @@ function buildIndex(
     });
   }
   captures.sort((a, b) => a.timeMs - b.timeMs || a.relativePath.localeCompare(b.relativePath));
-  audios.sort((a, b) => a.timeMs - b.timeMs || a.relativePath.localeCompare(b.relativePath));
-  const days = [...new Set([...captures.map((capture) => capture.day), ...audios.map((clip) => clip.day)])].sort();
+  const days = [...new Set(captures.map((capture) => capture.day))].sort();
   const needPassword = Boolean(dbkey && isChromiumSealed(dbkey));
   return {
     name,
     days,
     captures,
-    audios,
     dbkey,
-    indexDb,
     encrypted: 0,
     needPassword,
   };
-}
-
-function detectAudioPrefix(paths: string[]): string {
-  const hits = paths
-    .map((path) => {
-      const match = path.match(
-        /^(.*(?:^|\/)(?:screen-memory\/)?(?:audio|audios|audio-chunks|audio_chunks|recordings|mic|microphone|system-audio|system_audio|systemaudio|pcm|wavs?|voice|voices|sound|sounds|speech|meeting|meetings|media))\//,
-      );
-      return match?.[1] ?? "";
-    })
-    .filter(Boolean);
-  return hits.length > 0 ? mostCommon(hits) : "";
 }
 
 function detectCapturesPrefix(paths: string[]): string {
@@ -473,21 +358,6 @@ function dayFromPath(relative: string, lastModified: number): string | null {
     return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
   }
   return null;
-}
-
-function guessAudioTime(relative: string, lastModified: number, day: string): { timeMs: number; timed: boolean } {
-  const name = (relative.split("/").pop() ?? relative).replace(/\.[^.]+$/, "");
-  if (DAY_RE.test(name)) {
-    return {
-      timeMs: new Date(Number(day.slice(0, 4)), Number(day.slice(4, 6)) - 1, Number(day.slice(6, 8))).getTime(),
-      timed: false,
-    };
-  }
-  const stamped = stampFromPath(relative);
-  if (stamped !== null) {
-    return { timeMs: stamped, timed: true };
-  }
-  return { timeMs: lastModified || Date.now(), timed: false };
 }
 
 function guessTime(relative: string, lastModified: number): number {
@@ -567,10 +437,6 @@ export async function unlockScreenshotKey(dbkey: ArrayBuffer, password?: string)
 export async function decodeCapture(bytes: ArrayBuffer, key: CryptoKey | null): Promise<Blob> {
   const plain = await decryptLuci(bytes, key);
   return new Blob([plain], { type: sniffImage(new Uint8Array(plain)) });
-}
-
-export async function decodeAudio(bytes: ArrayBuffer, key: CryptoKey | null): Promise<Blob> {
-  return audioBlobFromPlain(new Uint8Array(await decryptLuci(bytes, key)));
 }
 
 async function decryptLuci(bytes: ArrayBuffer, key: CryptoKey | null): Promise<ArrayBuffer> {
