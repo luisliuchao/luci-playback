@@ -1073,8 +1073,11 @@ function activeSegmentAt(timeMs: number): TranscriptSegment | null {
   }
   const segment = segments[idx];
   const next = segments[idx + 1];
-  const gapGrace = 4000;
-  const until = next ? Math.min(next.absMs, segment.endMs + gapGrace) : segment.endMs + gapGrace;
+  // Keep the last line on screen until the next one begins (speech is sparse
+  // relative to frames, so a short hold would blink off on silent frames), but
+  // clear it after a long silence so stale text doesn't linger.
+  const maxHoldMs = 120000;
+  const until = next ? Math.min(next.absMs, segment.endMs + maxHoldMs) : segment.endMs + maxHoldMs;
   return timeMs <= until ? segment : null;
 }
 
