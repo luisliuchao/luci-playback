@@ -124,6 +124,8 @@ const state = {
   transcriptFilter: "all" as "all" | string,
   transcriptQuery: "",
   transcriptLoading: false,
+  transcriptNeedsPassword: false,
+  unlockingTranscript: false,
 };
 
 type AudioClip = LocalAudio & {
@@ -490,6 +492,8 @@ async function resetSaved(): Promise<void> {
   state.playing = false;
   state.transcript = [];
   state.transcriptOpen = false;
+  state.transcriptNeedsPassword = false;
+  state.unlockingTranscript = false;
   renderTranscriptPanel();
   playGeneration += 1;
   state.needPassword = false;
@@ -529,6 +533,8 @@ async function useFolder(picked: PickedFolder): Promise<void> {
   state.transcriptOpen = false;
   state.transcriptQuery = "";
   state.transcriptFilter = "all";
+  state.transcriptNeedsPassword = false;
+  state.unlockingTranscript = false;
   state.root = index.name;
   rootLabel.textContent = index.name;
   state.index = 0;
@@ -606,8 +612,13 @@ async function unlockFolder(): Promise<void> {
     try {
       const secret = await resolveDbSecret(state.folder.dbkey, password);
       await rememberDbSecret(state.folder.dbkey, secret);
+      state.transcriptNeedsPassword = false;
     } catch {
       // Transcript is optional; frames still work without it.
+    }
+    if (state.unlockingTranscript) {
+      state.unlockingTranscript = false;
+      state.transcriptOpen = true;
     }
     loadFolderFrames();
   } catch {
@@ -874,7 +885,11 @@ function renderControls(): void {
   muteButton.innerHTML = state.muted ? MUTE : SOUND;
   muteButton.ariaLabel = state.muted ? "Unmute" : "Mute";
   muteButton.dataset.tip = state.muted ? "Unmute (m)" : "Mute (m)";
-  transcriptButton.hidden = daySegments().length === 0;
+  transcriptButton.hidden = !(
+    state.folder?.indexDb &&
+    !state.needPassword &&
+    (daySegments().length > 0 || state.transcriptNeedsPassword)
+  );
   syncTranscriptHighlight();
   bigPlay.innerHTML = state.playing ? PAUSE : PLAY;
   player.classList.toggle("is-paused", !state.playing);
@@ -913,7 +928,9 @@ function renderFrame(): void {
     return;
   }
   empty.hidden = true;
-  unlockForm.hidden = true;
+  // Frames stay visible behind the unlock form when it is shown only to collect
+  // the transcript password (frames are already decrypted in that case).
+  unlockForm.hidden = !state.needPassword;
   frameImage.hidden = false;
   player.classList.add("has-frames");
   frameImage.alt = `Luci frame ${frame.label}`;
@@ -966,6 +983,15 @@ function toggleMute(): void {
 }
 
 function toggleTranscript(): void {
+  if (state.transcriptNeedsPassword) {
+    // Reuse the unlock form to collect the password; unlockFolder derives and
+    // caches the database key, then the transcript loads and opens.
+    state.unlockingTranscript = true;
+    state.needPassword = true;
+    render();
+    safePass.focus();
+    return;
+  }
   if (daySegments().length === 0) {
     return;
   }
@@ -989,17 +1015,21 @@ async function loadTranscriptForFolder(): Promise<void> {
   try {
     let secret = await loadDbSecret(folder.dbkey);
     if (!secret) {
-      // Only derivable when we have the password (sealed key) — otherwise the
-      // frame path is using a cached key and the transcript waits for unlock.
-      if (state.folder?.needPassword) {
+      try {
+        // Works without a password for an unsealed key; a sealed key throws,
+        // meaning we need the password once to derive the database key.
+        secret = await resolveDbSecret(folder.dbkey);
+        await rememberDbSecret(folder.dbkey, secret);
+      } catch {
+        state.transcriptNeedsPassword = true;
+        renderControls();
         return;
       }
-      secret = await resolveDbSecret(folder.dbkey);
-      await rememberDbSecret(folder.dbkey, secret);
     }
     const blob = await folder.indexDb();
     const { loadTranscript } = await import("./transcript");
     state.transcript = await loadTranscript(blob, secret);
+    state.transcriptNeedsPassword = false;
     renderControls();
     renderTranscriptPanel();
   } catch (error) {
